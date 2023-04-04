@@ -7,17 +7,18 @@
 #include<stdlib.h>
 #include<stdbool.h>
 #include<time.h>
-#include <fcntl.h>
+#include<fcntl.h>
 
 enum{
     REGULAR_FILE = 1,
-    SYMBOLIC_LINK = 2
+    SYMBOLIC_LINK = 2,
+    DIRECTORY = 3
 };
 
 void print_regular_file_menu(char* path){
-     printf("regular file %s \n", path);
+     printf("Regular file %s \n", path);
      printf("Menu for regular file \n");
-     printf("1. Read -n \n");
+     printf("1. Print name -n \n");
      printf("2. Size -d \n");
      printf("3. Number of hard links -h \n");
      printf("4. Time of last modification -m \n");
@@ -27,7 +28,7 @@ void print_regular_file_menu(char* path){
 }
 
 void print_symbolic_link_menu(char* path){
-     printf("symbolic link %s \n", path);
+     printf("Symbolic link %s \n", path);
      printf("Menu for symbolic link \n");
      printf("1. Link name -n \n");
      printf("2. Delete link -l \n");
@@ -37,30 +38,36 @@ void print_symbolic_link_menu(char* path){
      printf("6. Exit -e \n"); 
 }
 
-void not_valid_option(int type_of_file, char* path){
-            system("clear");
-            printf("Not valid option!\n");
-            printf("Please enter a valid option from the menu: \n");
-
-            if(type_of_file == 1)
-            {
-                print_regular_file_menu(path);
-            }
-            else
-            {
-                print_symbolic_link_menu(path);
-            }
+void print_dir_menu(char* path){
+    printf("Directory %s",path);
+    printf("1. Directory name -n \n");
+    printf("2. Size of the dir -d \n");
+    printf("3. Access rights -a \n");
+    printf("4. Total number of .C files from directory -c \n");
+    printf("5. Exit -e \n");
 }
 
 void print_menu(int type_of_file, char* path){
-    if(type_of_file == 1)
+    if(type_of_file == REGULAR_FILE)
     {
         print_regular_file_menu(path);
     }
-    else
+    else if(type_of_file == SYMBOLIC_LINK)
     {
         print_symbolic_link_menu(path);
     }
+    else
+    {
+        print_dir_menu(path);
+    }
+}
+
+void not_valid_option(int type_of_file, char* path){
+            system("clear");
+            printf("Not valid option!\n");
+            printf("You have introduced an option that is not present in the menu\n");
+            printf("Please enter a valid option from the menu: \n");
+            print_menu(type_of_file,path);
 }
 
 int main(int argv,char *args[])
@@ -73,8 +80,9 @@ int main(int argv,char *args[])
     }
 
     struct stat buff;
+    struct stat buff2;
     char path[1000];
-    char choice[5];
+    char choice[10];
     int type_of_file = 0;
     bool quit = false;
     strncpy(path,args[1],999);
@@ -86,48 +94,47 @@ int main(int argv,char *args[])
 
     if (S_ISREG(buff.st_mode))
     {
-        print_regular_file_menu(path);
         type_of_file = REGULAR_FILE;
     }
-    if(S_ISLNK(buff.st_mode))
+    else if(S_ISLNK(buff.st_mode))
     {
-        print_symbolic_link_menu(path);
         type_of_file = SYMBOLIC_LINK;
     }
+    else if(S_ISDIR(buff.st_mode)){
+        type_of_file = DIRECTORY;
 
-    scanf("%4s",choice);
+        
+    }
+
+    print_menu(type_of_file,path);
+    scanf("%7s",choice);
+    
     printf("choice %s \n",choice);
-
-    while(!quit)
+    int i = 0;
+    while(!quit && choice[i] != '\0')
     {
-        if(choice[0] == '-' && strlen(choice) == 2)
+        if(choice[0] == '-')
         {
-            if (strchr("nldhmae", choice[1]) && (type_of_file == REGULAR_FILE))
+            if (strchr("nldhmae", choice[i]) && (type_of_file == REGULAR_FILE))
             {
                 switch(choice[1])
                  {
                     case 'n':
-                        system("clear");
                         printf("------\nFile name : %s\n------\n",path);
                         break;
                     case 'd':
-                        system("clear");
                         printf("------\nSize  %ld\n------ \n",buff.st_size);
                         break;
                     case 'h':
-                        system("clear");
                         printf("------\nNumber of hard links -h  %ld\n------\n",buff.st_nlink);
                         break;
                     case 'm':
-                        system("clear");
                         printf("------\nTime of last modification -m %s\n------\n",ctime(&buff.st_atime));
                         break;
                     case 'a':
-                        system("clear");
                         printf("------\nAccess rights: %d,%d\n------\n",buff.st_uid,buff.st_gid);
                         break;
                     case 'l':
-                        system("clear");
                         printf("------\nCreate a symbolic link to the file,give the link name:");
                         char lnk[1000];
                         scanf("%999s",lnk);
@@ -147,32 +154,26 @@ int main(int argv,char *args[])
                     scanf("%4s",choice);
                 }
            }
-           else if(strchr("nldtae", choice[1])){
-                switch(choice[1])
+           else if(strchr("nldtae", choice[i]) && type_of_file == SYMBOLIC_LINK){
+                switch(choice[i])
                 {
                     case 'n':
-                        system("clear");
                         printf("------\nLink name : %s\n------\n",path);
                         break;
                     case 'l':
-                        system("clear");
                         unlink(path);
                         printf("------\nDelete link:%s\n------\n",path);
                         printf("------\nExit\n------\n");
                         quit = true;
                         break;
                     case 'd':
-                        system("clear");
                         printf("------\nSize of the link:%ld\n------\n",buff.st_size);
                         break;
                     case 't':
-                        system("clear");
-                        struct stat buff2;
                         stat(path,&buff2);
                         printf("------\nSize of the target:%ld\n------\n",buff2.st_size);
                         break;
                     case 'a':
-                        system("clear");
                         printf("------\nAccess rights: %d,%d\n------\n",buff.st_uid,buff.st_gid);
                         break;
                     case 'e':
@@ -187,6 +188,24 @@ int main(int argv,char *args[])
                     print_menu(type_of_file,path);
                     scanf("%4s",choice);
                 } 
+           }
+           else if(strchr("nldtae", choice[i]) && type_of_file == DIRECTORY)
+           {
+                switch (choice[i])
+                {
+                    case 'n':
+                        printf("------\nDirectory name : %s\n------\n",path);
+                        break;
+                    case 'd':
+                        printf("------\nSize of the directory: %ld\n------\n",buff.st_size);
+                        break;
+                    
+                
+                    break;
+                
+                default:
+                    break;
+                }
            }
            else
            {
