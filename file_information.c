@@ -153,6 +153,10 @@ void print_acces_rights(uid_t u, gid_t g) // this prints the acces rights in use
     
 }
 
+bool child_code(){
+    //child code here
+}
+
 int count_c_files_from_dir(DIR *dir, char *path) // this counts the number of .c files from a given directory
 {
     int nr_of_c_files = 0;
@@ -205,6 +209,11 @@ int main(int argc, char *args[])
     if (S_ISREG(buff.st_mode))
     {
         type_of_file = REGULAR_FILE;
+        pid_t pid_1 = fork();
+        if (pid_1 == 0)
+        {
+            child_code();
+        }
         print_menu(type_of_file, path);
     }
     else if (S_ISLNK(buff.st_mode))
@@ -354,3 +363,22 @@ int main(int argc, char *args[])
 
     return 0;
 }
+/*if(regcomp(&extensionC,".c$",REG_EXTENDED !=0))
+           {
+            printf("Error compiling .c regular expression \n");
+           }
+
+           if(regexec(&extensionC,path, 0, NULL, 0) == 0)
+           {
+                pid_t cpid = fork();
+                int wstatus;
+                if(cpid == -1)
+                {
+                    perror("Fork failure \n");
+                    exit(EXIT_FAILURE);
+
+
+                }
+                if(cpid == 0)
+                {
+*/
