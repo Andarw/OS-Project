@@ -9,6 +9,8 @@
 #include <time.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <regex.h>
+#include <sys/wait.h>
 
 enum // this enum is used to determine the type of file
 {
@@ -130,8 +132,13 @@ void verify_nr_of_args(int argc) // this verifies if the user has introduced the
     }
 }
 
-void check_directory(DIR *dir) // this verifies if the directory was opened successfully and parses over the "." and ".." directories
+DIR *open_DIR(char *path, int type_of_file) // this returns a pointer to the directory after skipping the "." and ".." entries, if the path is not a directory it returns NULL
 {
+    if (type_of_file != DIRECTORY)
+    {
+        return NULL;
+    }
+    DIR *dir = opendir(path);
     if (dir == NULL)
     {
         fprintf(stderr, "ERROR, cant open directory!");
@@ -139,22 +146,32 @@ void check_directory(DIR *dir) // this verifies if the directory was opened succ
     }
     readdir(dir);
     readdir(dir);
+    return dir;
 }
 
-void print_acces_rights(uid_t u, gid_t g) // this prints the acces rights in user-friendly format
+void print_acces_rights(struct stat buff) // this prints the acces rights in user-friendly format
 {
-    if(u == 0 && g == 0)
-    {
-        printf("root,root\n");
-    }else
-    {
-        printf("user with id %d ,group with id %d",u,g);
-    }
-    
-}
-
-bool child_code(){
-    //child code here
+    printf("Access rights for owner: \n \n");
+    if (buff.st_mode & S_IRUSR)
+        printf("Read permission for owner\n");
+    if (buff.st_mode & S_IWUSR)
+        printf("Write permission for owner\n");
+    if (buff.st_mode & S_IXUSR)
+        printf("Execute permission for owner\n");
+    printf("\nAccess rights for group: \n \n");
+    if (buff.st_mode & S_IRGRP)
+        printf("Read permission for group\n");
+    if (buff.st_mode & S_IWGRP)
+        printf("Write permission for group\n");
+    if (buff.st_mode & S_IXGRP)
+        printf("Execute permission for group\n");
+    printf("\nAccess rights for others: \n \n");
+    if (buff.st_mode & S_IROTH)
+        printf("Read permission for others\n");
+    if (buff.st_mode & S_IWOTH)
+        printf("Write permission for others\n");
+    if (buff.st_mode & S_IXOTH)
+        printf("Execute permission for others\n");
 }
 
 int count_c_files_from_dir(DIR *dir, char *path) // this counts the number of .c files from a given directory
@@ -163,6 +180,12 @@ int count_c_files_from_dir(DIR *dir, char *path) // this counts the number of .c
     struct dirent *entry;
     struct stat buff;
     char file_path[1000];
+    regex_t regex;
+    if (regcomp(&regex, ".c$", REG_EXTENDED))
+    {
+        fprintf(stderr, "ERROR, cant compile regex!");
+        exit(1);
+    }
     while ((entry = readdir(dir)) != NULL)
     {
         strcpy(file_path, path);
@@ -175,13 +198,102 @@ int count_c_files_from_dir(DIR *dir, char *path) // this counts the number of .c
         }
         if (S_ISREG(buff.st_mode))
         {
-            if (strstr(entry->d_name, ".c") != NULL)
+            if (regexec(&regex, entry->d_name, 0, NULL, 0) == 0)
             {
                 nr_of_c_files++;
             }
         }
     }
     return nr_of_c_files;
+}
+
+int type_of_entry(struct stat buff) // this retruns the type of the entry{regular file, symbolic link, directory}
+{
+    if (S_ISREG(buff.st_mode))
+    {
+        return REGULAR_FILE;
+    }
+    else if (S_ISLNK(buff.st_mode))
+    {
+        return SYMBOLIC_LINK;
+    }
+    else if (S_ISDIR(buff.st_mode))
+    {
+        return DIRECTORY;
+    }
+    else
+    {
+        return -1;
+    }
+}
+
+int read_choice(char *choice, struct stat buff, char *path) // this reads the choice and verify if it is valid and returns the length of the choice
+{
+    scanf("%7s", choice);
+    while (!is_valid_option(type_of_entry(buff), choice))
+    {
+        not_valid_option(type_of_entry(buff), path);
+        scanf("%7s", choice);
+    }
+    system("clear");
+    printf("choice %s \n", choice);
+    return strlen(choice);
+}
+
+void compile_if_C_file(char *path, int type_of_file) // this compiles the file if it is a .c file and prints the number of errors and warnings to the screen
+{
+    if (type_of_file != REGULAR_FILE)
+    {
+        return;
+    }
+    regex_t regex;
+    if (regcomp(&regex, ".c$", REG_EXTENDED))
+    {
+        fprintf(stderr, "ERROR, cant compile regex!");
+        exit(1);
+    }
+    if (regexec(&regex, path, 0, NULL, 0) == 0)
+    {
+        pid_t pid = fork();
+        int status;
+        if (pid == -1)
+        {
+            fprintf(stderr, "ERROR, cant fork!");
+            exit(1);
+        }
+        if (pid == 0)
+        {
+            status = execlp("sh", "sh", "compile_C_file.sh", path, NULL);
+            fprintf(stderr, "ERROR, cant execute script!");
+            exit(1);
+        }
+        wait(&status);
+    }
+}
+
+void create_file_if_dir(char *path, int type_of_file)
+{
+    if (type_of_file != DIRECTORY)
+    {
+        return;
+    }
+    pid_t pid = fork();
+    int status;
+    if (pid == -1)
+    {
+        fprintf(stderr, "ERROR, cant fork!");
+        exit(1);
+    }
+    if (pid == 0)
+    {
+        char fct_path[1000];
+        strcpy(fct_path, path);
+        strcat(fct_path, "_file.txt\0");
+        status = execlp("sh", "sh", "create_file.sh", fct_path, NULL);
+        fprintf(stderr, "ERROR, cant execute script!");
+        exit(1);
+    }
+    wait(&status);
 }
 
 int main(int argc, char *args[])
@@ -206,40 +318,17 @@ int main(int argc, char *args[])
         exit(1);
     }
 
-    if (S_ISREG(buff.st_mode))
-    {
-        type_of_file = REGULAR_FILE;
-        pid_t pid_1 = fork();
-        if (pid_1 == 0)
-        {
-            child_code();
-        }
-        print_menu(type_of_file, path);
-    }
-    else if (S_ISLNK(buff.st_mode))
-    {
-        type_of_file = SYMBOLIC_LINK;
-        print_menu(type_of_file, path);
-    }
-    else if (S_ISDIR(buff.st_mode))
-    {
-        type_of_file = DIRECTORY;
-        print_menu(type_of_file, path);
-        dir = opendir(path);
-        check_directory(dir);
-    }
+    type_of_file = type_of_entry(buff);
 
-    scanf("%7s", choice);
-    while (!is_valid_option(type_of_file, choice))
-    {
-        not_valid_option(type_of_file, path);
-        scanf("%7s", choice);
-    }
+    dir = open_DIR(path, type_of_file); // if the file is not a directory, dir will be NULL
 
-    system("clear");
-    printf("choice %s \n", choice);
+    compile_if_C_file(path, type_of_file);
 
-    int length_choice = strlen(choice);
+    create_file_if_dir(path, type_of_file);
+
+    print_menu(type_of_file, path);
+
+    int length_choice = read_choice(choice, buff, path);
     while (!quit)
     {
         for (i = 1; i <= length_choice; i++)
@@ -262,7 +351,7 @@ int main(int argc, char *args[])
                     break;
                 case 'a':
                     printf("------\nAccess rights: %u,%u\n------\n", buff.st_uid, buff.st_gid);
-                    print_acces_rights(buff.st_uid, buff.st_gid);
+                    print_acces_rights(buff);
                     printf("\n------\n");
                     break;
                 case 'l':
@@ -305,7 +394,7 @@ int main(int argc, char *args[])
                     break;
                 case 'a':
                     printf("------\nAccess rights: %u,%u\n------\n", buff.st_uid, buff.st_gid);
-                    print_acces_rights(buff.st_uid, buff.st_gid);
+                    print_acces_rights(buff);
                     printf("\n------\n");
                     break;
                 case 'e':
@@ -327,7 +416,7 @@ int main(int argc, char *args[])
                     break;
                 case 'a':
                     printf("------\nAccess rights: %u,%u\n------\n", buff.st_uid, buff.st_gid);
-                    print_acces_rights(buff.st_uid, buff.st_gid);
+                    print_acces_rights(buff);
                     printf("\n------\n");
                     break;
                 case 'c':
@@ -346,17 +435,9 @@ int main(int argc, char *args[])
             }
         }
         if (!quit)
-        {   // if the user didn't choose to exit
+        { // if the user didn't choose to exit
             print_menu(type_of_file, path);
-            scanf("%7s", choice);
-            while (!is_valid_option(type_of_file, choice))
-            {
-                not_valid_option(type_of_file, path);
-                scanf("%7s", choice);
-            }
-            length_choice = strlen(choice);
-            system("clear");
-            printf("choice %s \n", choice);
+            length_choice = read_choice(choice, buff, path);
         }
     }
     printf("------\n Exit \n------\n");
