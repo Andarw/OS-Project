@@ -11,6 +11,7 @@
 #include <dirent.h>
 #include <regex.h>
 #include <sys/wait.h>
+#include <stdint.h>
 
 enum // this enum is used to determine the type of file
 {
@@ -255,7 +256,7 @@ void compile_if_C_file(char *path, int type_of_file) // this compiles the file i
     if (regexec(&regex, path, 0, NULL, 0) == 0)
     {
         pid_t pid = fork();
-        int status;
+        // int status;
         if (pid == -1)
         {
             fprintf(stderr, "ERROR, cant fork!");
@@ -263,11 +264,10 @@ void compile_if_C_file(char *path, int type_of_file) // this compiles the file i
         }
         if (pid == 0)
         {
-            status = execlp("sh", "sh", "compile_C_file.sh", path, NULL);
+            execlp("sh", "sh", "compile_C_file.sh", path, NULL);
             fprintf(stderr, "ERROR, cant execute script!");
             exit(1);
         }
-        wait(&status);
     }
 }
 
@@ -278,7 +278,7 @@ void create_file_if_dir(char *path, int type_of_file)
         return;
     }
     pid_t pid = fork();
-    int status;
+    // int status;
     if (pid == -1)
     {
         fprintf(stderr, "ERROR, cant fork!");
@@ -289,11 +289,10 @@ void create_file_if_dir(char *path, int type_of_file)
         char fct_path[1000];
         strcpy(fct_path, path);
         strcat(fct_path, "_file.txt\0");
-        status = execlp("sh", "sh", "create_file.sh", fct_path, NULL);
+        execlp("sh", "sh", "create_file.sh", fct_path, NULL);
         fprintf(stderr, "ERROR, cant execute script!");
         exit(1);
     }
-    wait(&status);
 }
 
 int main(int argc, char *args[])
@@ -325,141 +324,154 @@ int main(int argc, char *args[])
     compile_if_C_file(path, type_of_file);
 
     create_file_if_dir(path, type_of_file);
-
+    sleep(2);
     print_menu(type_of_file, path);
-
     int length_choice = read_choice(choice, buff, path);
-    while (!quit)
+    pid_t pid = fork();
+    if (pid < 0)
     {
-        for (i = 1; i <= length_choice; i++)
+        fprintf(stderr, "Could not create child process!");
+        exit(1);
+    }
+    if (pid == 0)
+    {
+        while (!quit)
         {
-            if (type_of_file == REGULAR_FILE)
+            for (i = 1; i <= length_choice; i++)
             {
-                switch (choice[i])
+                if (type_of_file == REGULAR_FILE)
                 {
-                case 'n':
-                    printf("------\nFile name : %s\n------\n", path);
-                    break;
-                case 'd':
-                    printf("------\nSize  %ld\n------ \n", buff.st_size);
-                    break;
-                case 'h':
-                    printf("------\nNumber of hard links %ld\n------\n", buff.st_nlink);
-                    break;
-                case 'm':
-                    printf("------\nTime of last modification %s------\n", ctime(&buff.st_atime));
-                    break;
-                case 'a':
-                    printf("------\nAccess rights: %u,%u\n------\n", buff.st_uid, buff.st_gid);
-                    print_acces_rights(buff);
-                    printf("\n------\n");
-                    break;
-                case 'l':
-                    printf("------\nCreate a symbolic link to the file,give the link name:");
-                    char lnk[1000];
-                    scanf("%999s", lnk);
-                    printf("------\n");
-                    if (symlink(path, lnk) == -1)
+                    switch (choice[i])
                     {
-                        fprintf(stderr, "ERROR!\n");
-                        fprintf(stderr, "Could not create the symbolic link!");
-                        exit(1);
+                    case 'n':
+                        printf("------\nFile name : %s\n------\n", path);
+                        break;
+                    case 'd':
+                        printf("------\nSize  %ld\n------ \n", buff.st_size);
+                        break;
+                    case 'h':
+                        printf("------\nNumber of hard links %ld\n------\n", buff.st_nlink);
+                        break;
+                    case 'm':
+                        printf("------\nTime of last modification %s------\n", ctime(&buff.st_atime));
+                        break;
+                    case 'a':
+                        printf("------\nAccess rights: %u,%u\n------\n", buff.st_uid, buff.st_gid);
+                        print_acces_rights(buff);
+                        printf("\n------\n");
+                        break;
+                    case 'l':
+                        printf("------\nCreate a symbolic link to the file,give the link name:");
+                        char lnk[1000];
+                        scanf("%999s", lnk);
+                        printf("------\n");
+                        if (symlink(path, lnk) == -1)
+                        {
+                            fprintf(stderr, "ERROR!\n");
+                            fprintf(stderr, "Could not create the symbolic link!");
+                            exit(1);
+                        }
+                        break;
+                    case 'e':
+                        quit = true;
+                        break;
+                    default:
+                        break;
                     }
-                    break;
-                case 'e':
-                    quit = true;
-                    break;
-                default:
-                    break;
+                }
+                else if (type_of_file == SYMBOLIC_LINK)
+                {
+                    switch (choice[i])
+                    {
+                    case 'n':
+                        printf("------\nLink name : %s\n------\n", path);
+                        break;
+                    case 'l':
+                        unlink(path);
+                        printf("------\nDelete link:%s\n------\n", path);
+                        quit = true;
+                        break;
+                    case 'd':
+                        printf("------\nSize of the link:%ld\n------\n", buff.st_size);
+                        break;
+                    case 't':
+                        stat(path, &buff2);
+                        printf("------\nSize of the target:%ld\n------\n", buff2.st_size);
+                        break;
+                    case 'a':
+                        printf("------\nAccess rights: %u,%u\n------\n", buff.st_uid, buff.st_gid);
+                        print_acces_rights(buff);
+                        printf("\n------\n");
+                        break;
+                    case 'e':
+                        quit = true;
+                        break;
+                    default:
+                        break;
+                    }
+                }
+                else if (type_of_file == DIRECTORY)
+                {
+                    switch (choice[i])
+                    {
+                    case 'n':
+                        printf("------\nDirectory name : %s\n------\n", path);
+                        break;
+                    case 'd':
+                        printf("------\nSize of the directory: %ld\n------\n", buff.st_size);
+                        break;
+                    case 'a':
+                        printf("------\nAccess rights: %u,%u\n------\n", buff.st_uid, buff.st_gid);
+                        print_acces_rights(buff);
+                        printf("\n------\n");
+                        break;
+                    case 'c':
+                        if (nr_of_c_files == -1) // if the nr of .c files hasn't been counted yet
+                        {
+                            nr_of_c_files = count_c_files_from_dir(dir, path);
+                        }
+                        printf("------\nNumber of C files in the directory: %d\n------\n", nr_of_c_files);
+                        break;
+                    case 'e':
+                        quit = true; // will have to remove exit option, if correct option will do and terminate program
+                        break;
+                    default:
+                        break;
+                    }
                 }
             }
-            else if (type_of_file == SYMBOLIC_LINK)
-            {
-                switch (choice[i])
-                {
-                case 'n':
-                    printf("------\nLink name : %s\n------\n", path);
-                    break;
-                case 'l':
-                    unlink(path);
-                    printf("------\nDelete link:%s\n------\n", path);
-                    quit = true;
-                    break;
-                case 'd':
-                    printf("------\nSize of the link:%ld\n------\n", buff.st_size);
-                    break;
-                case 't':
-                    stat(path, &buff2);
-                    printf("------\nSize of the target:%ld\n------\n", buff2.st_size);
-                    break;
-                case 'a':
-                    printf("------\nAccess rights: %u,%u\n------\n", buff.st_uid, buff.st_gid);
-                    print_acces_rights(buff);
-                    printf("\n------\n");
-                    break;
-                case 'e':
-                    quit = true;
-                    break;
-                default:
-                    break;
-                }
-            }
-            else if (type_of_file == DIRECTORY)
-            {
-                switch (choice[i])
-                {
-                case 'n':
-                    printf("------\nDirectory name : %s\n------\n", path);
-                    break;
-                case 'd':
-                    printf("------\nSize of the directory: %ld\n------\n", buff.st_size);
-                    break;
-                case 'a':
-                    printf("------\nAccess rights: %u,%u\n------\n", buff.st_uid, buff.st_gid);
-                    print_acces_rights(buff);
-                    printf("\n------\n");
-                    break;
-                case 'c':
-                    if (nr_of_c_files == -1) // if the nr of .c files hasn't been counted yet
-                    {
-                        nr_of_c_files = count_c_files_from_dir(dir, path);
-                    }
-                    printf("------\nNumber of C files in the directory: %d\n------\n", nr_of_c_files);
-                    break;
-                case 'e':
-                    quit = true;
-                    break;
-                default:
-                    break;
-                }
+            if (!quit)
+            { // if the user didn't choose to exit
+                print_menu(type_of_file, path);
+                length_choice = read_choice(choice, buff, path);
             }
         }
-        if (!quit)
-        { // if the user didn't choose to exit
-            print_menu(type_of_file, path);
-            length_choice = read_choice(choice, buff, path);
-        }
+    exit(0);
     }
     printf("------\n Exit \n------\n");
+    int status;
+    int w;
+    for (int i = 0; i < 2; i++)
+    {
+        w = wait(&status);
+
+        if (w == -1)
+        {
+            perror("waitpid");
+            exit(EXIT_FAILURE);
+        }
+
+        if (WIFEXITED(status))
+        {
+            printf("exited, status=%d\n", WEXITSTATUS(status));
+        }
+    }
+    // wait(NULL);
+    // wait(NULL);
+    // int i1 = 0;
+    // i1++;
+    // printf("%d\n",i1);
+    // printf("lala\n");
 
     return 0;
 }
-/*if(regcomp(&extensionC,".c$",REG_EXTENDED !=0))
-           {
-            printf("Error compiling .c regular expression \n");
-           }
-
-           if(regexec(&extensionC,path, 0, NULL, 0) == 0)
-           {
-                pid_t cpid = fork();
-                int wstatus;
-                if(cpid == -1)
-                {
-                    perror("Fork failure \n");
-                    exit(EXIT_FAILURE);
-
-
-                }
-                if(cpid == 0)
-                {
-*/
