@@ -13,6 +13,8 @@
 #include <sys/wait.h>
 #include <stdint.h>
 
+int count_process = 0; // this variable is used to count the number of processes
+
 enum // this enum is used to determine the type of file
 {
     REGULAR_FILE = 1,
@@ -30,7 +32,7 @@ void print_regular_file_menu(char *path) // this prints the menu for regular fil
     printf("4. Time of last modification -m \n");
     printf("5. Access rights -a \n");
     printf("6. Create a symbolic link give:link name -l \n");
-    printf("7. Exit -e \n-------------------------\n");
+    // printf("7. Exit -e \n-------------------------\n");
 }
 
 void print_symbolic_link_menu(char *path) // this prints the menu for symbolic links
@@ -42,7 +44,7 @@ void print_symbolic_link_menu(char *path) // this prints the menu for symbolic l
     printf("3. Size of the link -d \n");
     printf("4. Size of the target -t \n");
     printf("5. Access rights -a \n");
-    printf("6. Exit -e \n\n-------------------------\n");
+    // printf("6. Exit -e \n\n-------------------------\n");
 }
 
 void print_dir_menu(char *path) // this prints the menu for directories
@@ -53,7 +55,7 @@ void print_dir_menu(char *path) // this prints the menu for directories
     printf("2. Size of the dir -d \n");
     printf("3. Access rights -a \n");
     printf("4. Total number of .C files from directory -c \n");
-    printf("5. Exit -e \n\n-------------------------\n");
+    // printf("5. Exit -e \n\n-------------------------\n");
 }
 
 void print_menu(int type_of_file, char *path) // this prints the menu depending on the type of file
@@ -94,7 +96,7 @@ bool is_valid_option(int type_of_file, char *option) // this verifies if the opt
     {
         for (int i = 1; i <= length_option; i++)
         {
-            if (!strchr("nldhmae", option[i]))
+            if (!strchr("nldhma", option[i]))
             {
                 return false;
             }
@@ -104,7 +106,7 @@ bool is_valid_option(int type_of_file, char *option) // this verifies if the opt
     {
         for (int i = 1; i <= length_option; i++)
         {
-            if (!strchr("nldtae", option[i]))
+            if (!strchr("nldta", option[i]))
             {
                 return false;
             }
@@ -114,7 +116,7 @@ bool is_valid_option(int type_of_file, char *option) // this verifies if the opt
     {
         for (int i = 1; i <= length_option; i++)
         {
-            if (!strchr("ndace", option[i]))
+            if (!strchr("ndac", option[i]))
             {
                 return false;
             }
@@ -125,10 +127,10 @@ bool is_valid_option(int type_of_file, char *option) // this verifies if the opt
 
 void verify_nr_of_args(int argc) // this verifies if the user has introduced the correct number of arguments
 {
-    if (argc != 2)
+    if (argc < 2)
     {
         fprintf(stderr, "ERROR!\n");
-        fprintf(stderr, "Usage ./p <file/dir/symlnk>");
+        fprintf(stderr, "Usage ./p <file/dir/symlnk>, the program needs at least one argument!\n");
         exit(1);
     }
 }
@@ -159,14 +161,14 @@ void print_acces_rights(struct stat buff) // this prints the acces rights in use
         printf("Write permission for owner\n");
     if (buff.st_mode & S_IXUSR)
         printf("Execute permission for owner\n");
-    printf("\nAccess rights for group: \n \n");
+    printf("----------------------\nAccess rights for group: \n \n");
     if (buff.st_mode & S_IRGRP)
         printf("Read permission for group\n");
     if (buff.st_mode & S_IWGRP)
         printf("Write permission for group\n");
     if (buff.st_mode & S_IXGRP)
         printf("Execute permission for group\n");
-    printf("\nAccess rights for others: \n \n");
+    printf("----------------------\nAccess rights for others: \n \n");
     if (buff.st_mode & S_IROTH)
         printf("Read permission for others\n");
     if (buff.st_mode & S_IWOTH)
@@ -255,6 +257,7 @@ void compile_if_C_file(char *path, int type_of_file) // this compiles the file i
     }
     if (regexec(&regex, path, 0, NULL, 0) == 0)
     {
+        count_process++;
         pid_t pid = fork();
         // int status;
         if (pid == -1)
@@ -277,6 +280,7 @@ void create_file_if_dir(char *path, int type_of_file)
     {
         return;
     }
+    count_process++;
     pid_t pid = fork();
     // int status;
     if (pid == -1)
@@ -305,37 +309,41 @@ int main(int argc, char *args[])
     char path[1000];
     char choice[10];
     DIR *dir;
-    int type_of_file = 0;
     int i;
-    int nr_of_c_files = -1; // is initialized with -1 as the nr of .c files will only be counted once then stored in this variable
-    bool quit = false;
-    strncpy(path, args[1], 999);
-
-    if (lstat(path, &buff) == -1)
+    int type_of_file;
+    int nr_of_c_files; // is initialized with -1 as the nr of .c files will only be counted once then stored in this variable
+    for (int j = 1; j < argc; j++)
     {
-        fprintf(stderr, "The specified path \" %s \" is not reacheable!", path);
-        exit(1);
-    }
+        count_process++;
+        type_of_file = 0;
+        nr_of_c_files = -1;
 
-    type_of_file = type_of_entry(buff);
+        strncpy(path, args[j], 999);
 
-    dir = open_DIR(path, type_of_file); // if the file is not a directory, dir will be NULL
+        if (lstat(path, &buff) == -1)
+        {
+            fprintf(stderr, "The specified path \" %s \" is not reacheable!", path);
+            exit(1);
+        }
 
-    compile_if_C_file(path, type_of_file);
+        type_of_file = type_of_entry(buff);
 
-    create_file_if_dir(path, type_of_file);
-    sleep(2);
-    print_menu(type_of_file, path);
-    int length_choice = read_choice(choice, buff, path);
-    pid_t pid = fork();
-    if (pid < 0)
-    {
-        fprintf(stderr, "Could not create child process!");
-        exit(1);
-    }
-    if (pid == 0)
-    {
-        while (!quit)
+        dir = open_DIR(path, type_of_file); // if the file is not a directory, dir will be NULL
+
+        compile_if_C_file(path, type_of_file);
+
+        create_file_if_dir(path, type_of_file);
+
+        sleep(2);
+        print_menu(type_of_file, path);
+        int length_choice = read_choice(choice, buff, path);
+        pid_t pid = fork();
+        if (pid < 0)
+        {
+            fprintf(stderr, "Could not create child process!");
+            exit(1);
+        }
+        if (pid == 0)
         {
             for (i = 1; i <= length_choice; i++)
             {
@@ -372,9 +380,6 @@ int main(int argc, char *args[])
                             exit(1);
                         }
                         break;
-                    case 'e':
-                        quit = true;
-                        break;
                     default:
                         break;
                     }
@@ -389,7 +394,6 @@ int main(int argc, char *args[])
                     case 'l':
                         unlink(path);
                         printf("------\nDelete link:%s\n------\n", path);
-                        quit = true;
                         break;
                     case 'd':
                         printf("------\nSize of the link:%ld\n------\n", buff.st_size);
@@ -402,9 +406,6 @@ int main(int argc, char *args[])
                         printf("------\nAccess rights: %u,%u\n------\n", buff.st_uid, buff.st_gid);
                         print_acces_rights(buff);
                         printf("\n------\n");
-                        break;
-                    case 'e':
-                        quit = true;
                         break;
                     default:
                         break;
@@ -432,26 +433,17 @@ int main(int argc, char *args[])
                         }
                         printf("------\nNumber of C files in the directory: %d\n------\n", nr_of_c_files);
                         break;
-                    case 'e':
-                        quit = true; // will have to remove exit option, if correct option will do and terminate program
-                        break;
                     default:
                         break;
                     }
                 }
             }
-            if (!quit)
-            { // if the user didn't choose to exit
-                print_menu(type_of_file, path);
-                length_choice = read_choice(choice, buff, path);
-            }
+            exit(0);
         }
-    exit(0);
     }
-    printf("------\n Exit \n------\n");
     int status;
     int w;
-    for (int i = 0; i < 2; i++)
+    for (int i = 0; i < count_process; i++)
     {
         w = wait(&status);
 
@@ -466,12 +458,5 @@ int main(int argc, char *args[])
             printf("exited, status=%d\n", WEXITSTATUS(status));
         }
     }
-    // wait(NULL);
-    // wait(NULL);
-    // int i1 = 0;
-    // i1++;
-    // printf("%d\n",i1);
-    // printf("lala\n");
-
     return 0;
 }
