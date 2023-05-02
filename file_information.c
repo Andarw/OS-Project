@@ -14,6 +14,7 @@
 #include <stdint.h>
 
 int count_process = 0; // this variable is used to count the number of processes
+int pfd[2];            // this is the pipe used for communication between the parent and the childS
 
 enum // this enum is used to determine the type of file
 {
@@ -267,6 +268,8 @@ void compile_if_C_file(char *path, int type_of_file) // this compiles the file i
         }
         if (pid == 0)
         {
+            close(pfd[0]);
+            dup2(pfd[1], 1);
             execlp("sh", "sh", "compile_C_file.sh", path, NULL);
             fprintf(stderr, "ERROR, cant execute script!");
             exit(1);
@@ -282,7 +285,6 @@ void create_file_if_dir(char *path, int type_of_file)
     }
     count_process++;
     pid_t pid = fork();
-    // int status;
     if (pid == -1)
     {
         fprintf(stderr, "ERROR, cant fork!");
@@ -312,8 +314,15 @@ int main(int argc, char *args[])
     int i;
     int type_of_file;
     int nr_of_c_files; // is initialized with -1 as the nr of .c files will only be counted once then stored in this variable
+    int score;
+    if (pipe(pfd) < 0)
+    {
+        fprintf(stderr, "ERROR, cant create pipe!");
+        exit(1);
+    }
     for (int j = 1; j < argc; j++)
     {
+        score = 0;
         count_process++;
         type_of_file = 0;
         nr_of_c_files = -1;
@@ -331,7 +340,11 @@ int main(int argc, char *args[])
         dir = open_DIR(path, type_of_file); // if the file is not a directory, dir will be NULL
 
         compile_if_C_file(path, type_of_file);
-
+        close(pfd[1]);
+        char buffer[512];
+        read(pfd[0], buffer, 512);
+        printf("%s", buffer);
+        close(pfd[0]);
         create_file_if_dir(path, type_of_file);
 
         sleep(2);

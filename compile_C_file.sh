@@ -13,9 +13,9 @@ gcc -o /dev/null "$1" 2> /tmp/compiler_output
 errors=$(grep -c "error:" /tmp/compiler_output)
 warnings=$(grep -c "warning:" /tmp/compiler_output)
 
-echo "Compilation complete"
-echo "Errors: $errors"
-echo "Warnings: $warnings"
+# echo "Compilation complete"
+echo "$errors"
+echo "$warnings"
 
 # Clean up the temporary file
 rm /tmp/compiler_output
