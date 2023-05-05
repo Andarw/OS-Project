@@ -13,8 +13,9 @@
 #include <sys/wait.h>
 #include <stdint.h>
 
-int count_process = 0; // this variable is used to count the number of processes
-int pfd[2];            // this is the pipe used for communication between the parent and the childS
+int count_process = 0;      // this variable is used to count the number of processes
+int pfd[2];                 // this is the pipe used for communication between the parent and the childS
+bool already_duped = false; // this variable is used to check if the pipe has already been duped
 
 enum // this enum is used to determine the type of file
 {
@@ -45,7 +46,6 @@ void print_symbolic_link_menu(char *path) // this prints the menu for symbolic l
     printf("3. Size of the link -d \n");
     printf("4. Size of the target -t \n");
     printf("5. Access rights -a \n");
-    // printf("6. Exit -e \n\n-------------------------\n");
 }
 
 void print_dir_menu(char *path) // this prints the menu for directories
@@ -56,7 +56,6 @@ void print_dir_menu(char *path) // this prints the menu for directories
     printf("2. Size of the dir -d \n");
     printf("3. Access rights -a \n");
     printf("4. Total number of .C files from directory -c \n");
-    // printf("5. Exit -e \n\n-------------------------\n");
 }
 
 void print_menu(int type_of_file, char *path) // this prints the menu depending on the type of file
@@ -260,7 +259,6 @@ void compile_if_C_file(char *path, int type_of_file) // this compiles the file i
     {
         count_process++;
         pid_t pid = fork();
-        // int status;
         if (pid == -1)
         {
             fprintf(stderr, "ERROR, cant fork!");
@@ -269,7 +267,13 @@ void compile_if_C_file(char *path, int type_of_file) // this compiles the file i
         if (pid == 0)
         {
             close(pfd[0]);
-            dup2(pfd[1], 1);
+
+            if (!already_duped)
+            {
+                dup2(pfd[1], 1);
+                already_duped = 1;
+            }
+            close(pfd[1]);
             execlp("sh", "sh", "compile_C_file.sh", path, NULL);
             fprintf(stderr, "ERROR, cant execute script!");
             exit(1);
@@ -277,7 +281,7 @@ void compile_if_C_file(char *path, int type_of_file) // this compiles the file i
     }
 }
 
-void create_file_if_dir(char *path, int type_of_file)
+void create_file_if_dir(char *path, int type_of_file) // this creates a file with the name of the entry if it is a directory
 {
     if (type_of_file != DIRECTORY)
     {
@@ -301,6 +305,40 @@ void create_file_if_dir(char *path, int type_of_file)
     }
 }
 
+void print_score(char *path, char *buffer) // this function retrevies the components of the score, computes the score and prints it in the file grades.txt
+{
+    int score = 0;
+    int nr_of_errors = 0;
+    int nr_of_warnings = 0;
+    char *token = strtok(buffer, " \n");
+    nr_of_errors = atoi(token);
+    token = strtok(NULL, " \0\n");
+    nr_of_warnings = atoi(token);
+    if (nr_of_errors == 0)
+    {
+        if (nr_of_warnings > 10)
+        {
+            score = 2;
+        }
+        else if (nr_of_warnings > 0)
+        {
+            score = 2 + 8 * (10 - nr_of_warnings) / 10;
+        }
+        else
+        {
+            score = 10;
+        }
+    }
+    else
+    {
+        score = 1;
+    }
+    FILE *fptr;
+    fptr = fopen("grades.txt", "a");
+    fprintf(fptr, "%s: %d\n", path, score);
+    fclose(fptr);
+}
+
 int main(int argc, char *args[])
 {
 
@@ -313,19 +351,18 @@ int main(int argc, char *args[])
     DIR *dir;
     int i;
     int type_of_file;
-    int nr_of_c_files; // is initialized with -1 as the nr of .c files will only be counted once then stored in this variable
-    int score;
-    if (pipe(pfd) < 0)
-    {
-        fprintf(stderr, "ERROR, cant create pipe!");
-        exit(1);
-    }
+    int nr_of_c_files;
+
     for (int j = 1; j < argc; j++)
     {
-        score = 0;
+        if (pipe(pfd) < 0)
+        {
+            fprintf(stderr, "ERROR, cant create pipe!");
+            exit(1);
+        }
         count_process++;
         type_of_file = 0;
-        nr_of_c_files = -1;
+        nr_of_c_files = -1; // is initialized with -1 as the nr of .c files will only be counted once then stored in this variable
 
         strncpy(path, args[j], 999);
 
@@ -340,16 +377,22 @@ int main(int argc, char *args[])
         dir = open_DIR(path, type_of_file); // if the file is not a directory, dir will be NULL
 
         compile_if_C_file(path, type_of_file);
+
+        char buffer[512] = {0}; // this buffer will be used to read the output of the script compile_C_file.sh
         close(pfd[1]);
-        char buffer[512];
-        read(pfd[0], buffer, 512);
-        printf("%s", buffer);
-        close(pfd[0]);
+        if (read(pfd[0], buffer, 512))
+        {
+            printf("buffer: %s\n", buffer);
+            print_score(path, buffer);
+        }
+
         create_file_if_dir(path, type_of_file);
 
         sleep(2);
         print_menu(type_of_file, path);
+
         int length_choice = read_choice(choice, buff, path);
+
         pid_t pid = fork();
         if (pid < 0)
         {
@@ -454,6 +497,7 @@ int main(int argc, char *args[])
             exit(0);
         }
     }
+    close(pfd[0]);
     int status;
     int w;
     for (int i = 0; i < count_process; i++)
