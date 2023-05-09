@@ -243,7 +243,7 @@ int read_choice(char *choice, struct stat buff, char *path) // this reads the ch
     return strlen(choice);
 }
 
-void compile_if_C_file(char *path, int type_of_file) // this compiles the file if it is a .c file and prints the number of errors and warnings to the screen
+void compile_if_C_file_else_count_lines(char *path, int type_of_file) // this compiles the file if it is a .c file and prints the number of errors and warnings to the screen
 {
     if (type_of_file != REGULAR_FILE)
     {
@@ -255,9 +255,10 @@ void compile_if_C_file(char *path, int type_of_file) // this compiles the file i
         fprintf(stderr, "ERROR, cant compile regex!");
         exit(1);
     }
+    count_process++;
     if (regexec(&regex, path, 0, NULL, 0) == 0)
     {
-        count_process++;
+
         pid_t pid = fork();
         if (pid == -1)
         {
@@ -267,14 +268,25 @@ void compile_if_C_file(char *path, int type_of_file) // this compiles the file i
         if (pid == 0)
         {
             close(pfd[0]);
-
-            if (!already_duped)
-            {
-                dup2(pfd[1], 1);
-                already_duped = 1;
-            }
-            close(pfd[1]);
+            dup2(pfd[1], 1); // Comment: Check worked
             execlp("sh", "sh", "compile_C_file.sh", path, NULL);
+            fprintf(stderr, "ERROR, cant execute script!");
+            exit(1);
+        }
+    }
+    else
+    {
+        pid_t pid = fork();
+        if (pid == -1)
+        {
+            fprintf(stderr, "ERROR, cant fork!");
+            exit(1);
+        }
+        if (pid == 0)
+        {
+            close(pfd[0]);
+            dup2(pfd[1], 1);
+            // execlp("sh", "sh", "compile_C_file.sh", path, NULL);
             fprintf(stderr, "ERROR, cant execute script!");
             exit(1);
         }
@@ -376,13 +388,13 @@ int main(int argc, char *args[])
 
         dir = open_DIR(path, type_of_file); // if the file is not a directory, dir will be NULL
 
-        compile_if_C_file(path, type_of_file);
+        compile_if_C_file_else_count_lines(path, type_of_file);
 
         char buffer[512] = {0}; // this buffer will be used to read the output of the script compile_C_file.sh
         close(pfd[1]);
-        if (read(pfd[0], buffer, 512))
+
+        if (read(pfd[0], buffer, 512)) // Comment:read 1 byte at a time
         {
-            printf("buffer: %s\n", buffer);
             print_score(path, buffer);
         }
 
