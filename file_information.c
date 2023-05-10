@@ -15,7 +15,6 @@
 
 int count_process = 0;      // this variable is used to count the number of processes
 int pfd[2];                 // this is the pipe used for communication between the parent and the childS
-bool already_duped = false; // this variable is used to check if the pipe has already been duped
 
 enum // this enum is used to determine the type of file
 {
@@ -34,7 +33,6 @@ void print_regular_file_menu(char *path) // this prints the menu for regular fil
     printf("4. Time of last modification -m \n");
     printf("5. Access rights -a \n");
     printf("6. Create a symbolic link give:link name -l \n");
-    // printf("7. Exit -e \n-------------------------\n");
 }
 
 void print_symbolic_link_menu(char *path) // this prints the menu for symbolic links
@@ -243,7 +241,7 @@ int read_choice(char *choice, struct stat buff, char *path) // this reads the ch
     return strlen(choice);
 }
 
-void compile_if_C_file_else_count_lines(char *path, int type_of_file) // this compiles the file if it is a .c file and prints the number of errors and warnings to the screen
+void compile_if_C_file_else_count_lines(char *path, int type_of_file, int *c_file) // this compiles the file if it is a .c file and prints the number of errors and warnings to the screen
 {
     if (type_of_file != REGULAR_FILE)
     {
@@ -258,7 +256,7 @@ void compile_if_C_file_else_count_lines(char *path, int type_of_file) // this co
     count_process++;
     if (regexec(&regex, path, 0, NULL, 0) == 0)
     {
-
+        *c_file = 1;
         pid_t pid = fork();
         if (pid == -1)
         {
@@ -286,7 +284,7 @@ void compile_if_C_file_else_count_lines(char *path, int type_of_file) // this co
         {
             close(pfd[0]);
             dup2(pfd[1], 1);
-            // execlp("sh", "sh", "compile_C_file.sh", path, NULL);
+            execlp("wc", "wc", "-l", path, NULL);
             fprintf(stderr, "ERROR, cant execute script!");
             exit(1);
         }
@@ -364,6 +362,7 @@ int main(int argc, char *args[])
     int i;
     int type_of_file;
     int nr_of_c_files;
+    int c_file = 0;
 
     for (int j = 1; j < argc; j++)
     {
@@ -388,14 +387,32 @@ int main(int argc, char *args[])
 
         dir = open_DIR(path, type_of_file); // if the file is not a directory, dir will be NULL
 
-        compile_if_C_file_else_count_lines(path, type_of_file);
+        compile_if_C_file_else_count_lines(path, type_of_file, &c_file);
 
-        char buffer[512] = {0}; // this buffer will be used to read the output of the script compile_C_file.sh
-        close(pfd[1]);
+        char buffer[512] = {0}; // this buffer will be used to read the output of the script compile_C_file.sh or count_lines.sh
 
-        if (read(pfd[0], buffer, 512)) // Comment:read 1 byte at a time
+        if (close(pfd[1]) < 0)
         {
-            print_score(path, buffer);
+            fprintf(stderr, "ERROR, cant close pipe!");
+            exit(1);
+        }
+
+        char tmp[1];
+        while (read(pfd[0], tmp, 1) == 1)
+        {
+            strncat(buffer, tmp, 1);
+        }
+
+        if (type_of_file == REGULAR_FILE)
+        {
+            if (c_file)
+            {
+                print_score(path, buffer);
+            }
+            else
+            {
+                printf("number of lines: %c\n", buffer[0]);
+            }
         }
 
         create_file_if_dir(path, type_of_file);
@@ -510,6 +527,7 @@ int main(int argc, char *args[])
         }
     }
     close(pfd[0]);
+    sleep(1);
     int status;
     int w;
     for (int i = 0; i < count_process; i++)
@@ -524,7 +542,7 @@ int main(int argc, char *args[])
 
         if (WIFEXITED(status))
         {
-            printf("exited, status=%d\n", WEXITSTATUS(status));
+            printf("The process with PID %d has ended with the exit code %d\n", w, WEXITSTATUS(status));
         }
     }
     return 0;
