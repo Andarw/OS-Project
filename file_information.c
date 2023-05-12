@@ -13,8 +13,8 @@
 #include <sys/wait.h>
 #include <stdint.h>
 
-int count_process = 0;      // this variable is used to count the number of processes
-int pfd[2];                 // this is the pipe used for communication between the parent and the childS
+int count_process = 0; // this variable is used to count the number of processes
+int pfd[2];            // this is the pipe used for communication between the parent and the childS
 
 enum // this enum is used to determine the type of file
 {
@@ -265,8 +265,16 @@ void compile_if_C_file_else_count_lines(char *path, int type_of_file, int *c_fil
         }
         if (pid == 0)
         {
-            close(pfd[0]);
-            dup2(pfd[1], 1); // Comment: Check worked
+            if (close(pfd[0]) < 0)
+            {
+                fprintf(stderr, "ERROR, cant close pipe!");
+                exit(1);
+            }
+            if (dup2(pfd[1], 1) < 0)
+            {
+                fprintf(stderr, "ERROR, cant duplicate pipe!");
+                exit(1);
+            }
             execlp("sh", "sh", "compile_C_file.sh", path, NULL);
             fprintf(stderr, "ERROR, cant execute script!");
             exit(1);
@@ -282,8 +290,16 @@ void compile_if_C_file_else_count_lines(char *path, int type_of_file, int *c_fil
         }
         if (pid == 0)
         {
-            close(pfd[0]);
-            dup2(pfd[1], 1);
+            if (close(pfd[0]) < 0)
+            {
+                fprintf(stderr, "ERROR, cant close pipe!");
+                exit(1);
+            }
+            if (dup2(pfd[1], 1) < 0)
+            {
+                fprintf(stderr, "ERROR, cant duplicate pipe!");
+                exit(1);
+            }
             execlp("wc", "wc", "-l", path, NULL);
             fprintf(stderr, "ERROR, cant execute script!");
             exit(1);
@@ -349,11 +365,30 @@ void print_score(char *path, char *buffer) // this function retrevies the compon
     fclose(fptr);
 }
 
+void change_acces_rights_if_sym(char* path, int type_of_file)
+{
+    if(type_of_file != SYMBOLIC_LINK)
+    {
+        return;
+    }
+    count_process++;
+    pid_t pid = fork();
+    if (pid == -1)
+    {
+        fprintf(stderr, "ERROR, cant fork!");
+        exit(1);
+    }
+    if (pid == 0)
+    {
+        execlp("chmod", "chmod", "-v", "760", path, NULL);
+        fprintf(stderr, "ERROR, cant execute script!");
+        exit(1);
+    }
+}
+
 int main(int argc, char *args[])
 {
-
     verify_nr_of_args(argc);
-
     struct stat buff;
     struct stat buff2;
     char path[1000];
@@ -387,11 +422,11 @@ int main(int argc, char *args[])
 
         dir = open_DIR(path, type_of_file); // if the file is not a directory, dir will be NULL
 
-        compile_if_C_file_else_count_lines(path, type_of_file, &c_file);
+        compile_if_C_file_else_count_lines(path, type_of_file, &c_file); // this creates a child proccess
 
         char buffer[512] = {0}; // this buffer will be used to read the output of the script compile_C_file.sh or count_lines.sh
 
-        if (close(pfd[1]) < 0)
+        if (close(pfd[1]) < 0) // close write end of pipe after child writes to it
         {
             fprintf(stderr, "ERROR, cant close pipe!");
             exit(1);
@@ -401,6 +436,12 @@ int main(int argc, char *args[])
         while (read(pfd[0], tmp, 1) == 1)
         {
             strncat(buffer, tmp, 1);
+        }
+
+        if (close(pfd[0]) < 0) // close pipe after parent reads from it
+        {
+            fprintf(stderr, "ERROR, cant close pipe,option handelling child!");
+            exit(1);
         }
 
         if (type_of_file == REGULAR_FILE)
@@ -415,8 +456,9 @@ int main(int argc, char *args[])
             }
         }
 
-        create_file_if_dir(path, type_of_file);
+        create_file_if_dir(path, type_of_file); // this creates a child proccess
 
+        change_acces_rights_if_sym(path, type_of_file); // this creates a child proccess
         sleep(2);
         print_menu(type_of_file, path);
 
@@ -429,7 +471,7 @@ int main(int argc, char *args[])
             exit(1);
         }
         if (pid == 0)
-        {
+        { // child process
             for (i = 1; i <= length_choice; i++)
             {
                 if (type_of_file == REGULAR_FILE)
@@ -454,6 +496,7 @@ int main(int argc, char *args[])
                         printf("\n------\n");
                         break;
                     case 'l':
+                        sleep(2);
                         printf("------\nCreate a symbolic link to the file,give the link name:");
                         char lnk[1000];
                         scanf("%999s", lnk);
@@ -526,14 +569,12 @@ int main(int argc, char *args[])
             exit(0);
         }
     }
-    close(pfd[0]);
     sleep(1);
     int status;
     int w;
     for (int i = 0; i < count_process; i++)
     {
         w = wait(&status);
-
         if (w == -1)
         {
             perror("waitpid");
