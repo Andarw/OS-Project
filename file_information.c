@@ -145,8 +145,8 @@ DIR *open_DIR(char *path, int type_of_file) // this returns a pointer to the dir
         fprintf(stderr, "ERROR, cant open directory!");
         exit(1);
     }
-    readdir(dir);
-    readdir(dir);
+    readdir(dir);// .
+    readdir(dir);// ..
     return dir;
 }
 
@@ -361,8 +361,17 @@ void print_score(char *path, char *buffer) // this function retrevies the compon
     }
     FILE *fptr;
     fptr = fopen("grades.txt", "a");
+    if(fptr == NULL)
+    {
+        fprintf(stderr, "ERROR, cant open file!");
+        exit(1);
+    }
     fprintf(fptr, "%s: %d\n", path, score);
-    fclose(fptr);
+    if(fclose(fptr) < 0)
+    {
+        fprintf(stderr, "ERROR, cant close file!");
+        exit(1);
+    }
 }
 
 void change_acces_rights_if_sym(char* path, int type_of_file)
@@ -452,7 +461,7 @@ int main(int argc, char *args[])
             }
             else
             {
-                printf("number of lines: %c\n", buffer[0]);
+                printf("number of lines: %c\n", buffer[0] + 1);
             }
         }
 
@@ -472,7 +481,8 @@ int main(int argc, char *args[])
         }
         if (pid == 0)
         { // child process
-            for (i = 1; i <= length_choice; i++)
+            bool is_not_deleted_sym = true; // this variable is used to check if the symbolic link was deleted
+            for (i = 1; i <= length_choice && is_not_deleted_sym; i++)
             {
                 if (type_of_file == REGULAR_FILE)
                 {
@@ -491,13 +501,12 @@ int main(int argc, char *args[])
                         printf("------\nTime of last modification %s------\n", ctime(&buff.st_atime));
                         break;
                     case 'a':
-                        printf("------\nAccess rights: %u,%u\n------\n", buff.st_uid, buff.st_gid);
                         print_acces_rights(buff);
                         printf("\n------\n");
                         break;
                     case 'l':
                         sleep(2);
-                        printf("------\nCreate a symbolic link to the file,give the link name:");
+                        printf("------\nCreate a symbolic link to the file,give the link name(If this appears before a menu then the first argument you input will be the name of the link):\n");
                         char lnk[1000];
                         scanf("%999s", lnk);
                         printf("------\n");
@@ -520,8 +529,14 @@ int main(int argc, char *args[])
                         printf("------\nLink name : %s\n------\n", path);
                         break;
                     case 'l':
-                        unlink(path);
+                        if(unlink(path) < 0)
+                        {
+                            fprintf(stderr, "ERROR!\n");
+                            fprintf(stderr, "Could not delete the symbolic link!");
+                            exit(1);
+                        }
                         printf("------\nDelete link:%s\n------\n", path);
+                        is_not_deleted_sym = false;
                         break;
                     case 'd':
                         printf("------\nSize of the link:%ld\n------\n", buff.st_size);
@@ -531,7 +546,7 @@ int main(int argc, char *args[])
                         printf("------\nSize of the target:%ld\n------\n", buff2.st_size);
                         break;
                     case 'a':
-                        printf("------\nAccess rights: %u,%u\n------\n", buff.st_uid, buff.st_gid);
+                       // printf("------\nAccess rights: %u,%u\n------\n", buff.st_uid, buff.st_gid);
                         print_acces_rights(buff);
                         printf("\n------\n");
                         break;
@@ -550,7 +565,7 @@ int main(int argc, char *args[])
                         printf("------\nSize of the directory: %ld\n------\n", buff.st_size);
                         break;
                     case 'a':
-                        printf("------\nAccess rights: %u,%u\n------\n", buff.st_uid, buff.st_gid);
+                       // printf("------\nAccess rights: %u,%u\n------\n", buff.st_uid, buff.st_gid);
                         print_acces_rights(buff);
                         printf("\n------\n");
                         break;
@@ -568,6 +583,7 @@ int main(int argc, char *args[])
             }
             exit(0);
         }
+        sleep(1);
     }
     sleep(1);
     int status;
